@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "domino_ai"
+version = "0.1.0"
+description = "Domino engine with PyQt6 GUI and DQN self-play training"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+    "PyQt6>=6.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+include = ["domino*"]
+exclude = ["tests*", "checkpoints*", "config*"]

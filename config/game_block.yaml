@@ -1,0 +1,5 @@
+game:
+  num_players: 4
+  mode: block
+  team_mode: false
+  human_seat: 0           # which seat the human plays (others are bots)

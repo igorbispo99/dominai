@@ -1,0 +1,10 @@
+Gostaria de fazer uma engine de dominó com GUI para jogar contra ela.
+Essa engine deve ser treinada usando algoritmo de aprendizado por reforço que jogue contra si mesmo + algum modelo de ML para evaluation, tipo QLearning+ML
+esse modelo ML deve poder ser customizado/escolhido
+Deve suportar até 4 jogadores
+O algoritmo deve usar a seguinte codificação de estado para o jogo:
+- Vetor tipo tem/nao-tem em que cada posição representa uma peça, para representar a mão do jogador
+- Vetor tipo tem/nao-tem em que cada representa uma peça + duas posicoes adicionais para representar qual numero está em cada ponta, para representar a mesa
+- Vetor de 4 posicoes para representar quantas peças tem cada oponente
+O código deve ter um modo de self training, em que o computador joga contra si mesmo e vai aprendendo e salvando os pesos de treinamento
+Deve ter um modo de jogar contra a maquina em que a máquina controla de 1 até 3 bots.
