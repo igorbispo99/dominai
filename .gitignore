@@ -209,3 +209,7 @@ __marimo__/
 # Local workspace tooling
 .claude/
 .codex
+
+# Trained checkpoints and logs, except (latest.pt)
+checkpoints/
+logs/
