@@ -34,6 +34,7 @@ class HandWidget(QWidget):
             is_legal = pi in legal_idxs
             w.set_highlighted(is_legal)
             w.set_disabled(not is_legal)
+            w.set_draggable(is_legal)
             self._widgets[pi] = w
             self._layout.insertWidget(self._layout.count() - 1, w)
 
@@ -41,4 +42,5 @@ class HandWidget(QWidget):
         """Disable all clicks (bot's turn / game over)."""
         for w in self._widgets.values():
             w.set_disabled(True)
+            w.set_draggable(False)
             w.set_highlighted(False)

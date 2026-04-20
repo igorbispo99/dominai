@@ -44,6 +44,9 @@ class GameState:
     mode: str
     passes_in_a_row: int
     last_winner: Optional[int] = None
+    # per-player history (indexed by player id)
+    player_played: Tuple[Tuple[int, ...], ...] = ()  # pieces each player placed
+    player_passes: Tuple[int, ...] = ()              # pass count per player
 
     @property
     def is_empty_table(self) -> bool:
@@ -142,6 +145,8 @@ def new_game(
         mode=mode,
         passes_in_a_row=0,
         last_winner=None,
+        player_played=tuple(() for _ in range(num_players)),
+        player_passes=tuple(0 for _ in range(num_players)),
     )
     return _prepare_turn(state)
 
@@ -176,7 +181,12 @@ def step(state: GameState, action: int) -> Tuple[GameState, bool, Dict]:
     if action == PASS_ACTION:
         new_passes = state.passes_in_a_row + 1
         next_player = (state.current_player + 1) % state.num_players
-        ns = replace(state, current_player=next_player, passes_in_a_row=new_passes)
+        new_player_passes = tuple(
+            state.player_passes[i] + 1 if i == state.current_player else state.player_passes[i]
+            for i in range(state.num_players)
+        ) if state.player_passes else state.player_passes
+        ns = replace(state, current_player=next_player, passes_in_a_row=new_passes,
+                     player_passes=new_player_passes)
         if new_passes >= state.num_players:
             ns = _finalize_blocked(ns)
             info["winner"] = ns.last_winner
@@ -192,6 +202,10 @@ def step(state: GameState, action: int) -> Tuple[GameState, bool, Dict]:
         new_hand if i == player else state.hands[i] for i in range(state.num_players)
     )
     new_played = state.played + (piece_idx,)
+    new_player_played = tuple(
+        state.player_played[i] + (piece_idx,) if i == player else state.player_played[i]
+        for i in range(state.num_players)
+    ) if state.player_played else state.player_played
 
     if state.is_empty_table:
         new_left, new_right = piece.low, piece.high
@@ -211,6 +225,7 @@ def step(state: GameState, action: int) -> Tuple[GameState, bool, Dict]:
             right_end=new_right,
             passes_in_a_row=0,
             last_winner=player,
+            player_played=new_player_played,
         )
         info["winner"] = player
         return ns, True, info
@@ -224,5 +239,6 @@ def step(state: GameState, action: int) -> Tuple[GameState, bool, Dict]:
         right_end=new_right,
         current_player=next_player,
         passes_in_a_row=0,
+        player_played=new_player_played,
     )
     return _prepare_turn(ns), False, info

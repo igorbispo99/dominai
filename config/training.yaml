@@ -1,30 +1,46 @@
 game:
-  num_players: 4
-  mode: block            # block | draw
+  num_players: 3
+  mode: draw              # block | draw
   team_mode: false        # true = teams (even seats vs odd seats)
 
 model:
   name: mlp               # mlp | resnet
-  hidden_sizes: [256, 256]
+  hidden_sizes: [512, 512, 256]
   activation: relu
   dropout: 0.0
+  layer_norm: true
+  dueling: true
 
 training:
   episodes: 100000
-  batch_size: 64
-  buffer_size: 100000
-  warmup_steps: 1000
+  batch_size: 128
+  buffer_size: 200000
+  warmup_steps: 5000
   gamma: 0.99
-  lr: 0.001
-  grad_clip: 10.0
-  target_sync_every: 1000
+  lr: 0.0003
+  grad_clip: 5.0
+  target_sync_every: 2000
+  train_steps_per_episode: 2
+  reward_shaping: true
+
+  # opponent mixing per episode (for seats 1..n-1). Remainder of the
+  # probability mass goes to self-play with the online model.
+  opp_prob_random: 0.2
+  opp_prob_heuristic: 0.2
+  opp_prob_pool: 0.0
+
   epsilon:
     start: 1.0
     end: 0.05
     decay_episodes: 50000
+
+  opponent_pool:
+    add_every: 5000
+    max_size: 8
+
   eval_every: 1000
   eval_games: 100
   checkpoint_every: 5000
-  checkpoint_dir: ./checkpoints/run01
+  checkpoint_dir: ./checkpoints/run03
   seed: 42
-  device: cpu
+  device: cuda

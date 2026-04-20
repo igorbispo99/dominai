@@ -143,7 +143,7 @@ class GamePage(QWidget):
         self._state = None
         self._human_seat = 0
         self._num_players = 4
-        self._bot_agents: dict[int, object] = {}
+        self._bot_agents: dict[int, DQNAgent | RandomAgent] = {}
         self._pending_piece: Optional[int] = None  # awaiting side choice
 
         root = QHBoxLayout(self)
@@ -154,6 +154,7 @@ class GamePage(QWidget):
         self._status.setStyleSheet("font-size: 14px; padding: 6px;")
         center.addWidget(self._status)
         self._board = BoardWidget()
+        self._board.pieceDropped.connect(self._on_board_piece_dropped)
         center.addWidget(self._board, 1)
 
         # side-choice row
@@ -214,9 +215,13 @@ class GamePage(QWidget):
     # ---- UI refresh -------------------------------------------------------
 
     def _refresh_opponents(self) -> None:
+        if self._state is None:
+            return
         # clear box
         while self._opp_box.count():
             item = self._opp_box.takeAt(0)
+            if item is None:
+                continue
             w = item.widget()
             if w is not None:
                 w.deleteLater()
@@ -246,6 +251,7 @@ class GamePage(QWidget):
                 msg = f"Jogador {w} venceu."
             self._status.setText(msg)
             self._hand.freeze()
+            self._board.set_drop_enabled(False)
             self._btn_left.setVisible(False)
             self._btn_right.setVisible(False)
             return
@@ -267,10 +273,12 @@ class GamePage(QWidget):
         if not mask.any():
             # terminal — nothing more to do
             self._hand.freeze()
+            self._board.set_drop_enabled(False)
             return
 
         cp = self._state.current_player
         if cp == self._human_seat:
+            self._board.set_drop_enabled(True)
             legal_pieces = self._extract_legal_pieces(mask)
             self._hand.set_hand(self._state.hands[cp], set(legal_pieces))
             # handle PASS action: no pieces are playable, single PASS option
@@ -278,6 +286,7 @@ class GamePage(QWidget):
                 self._status.setText("Você não tem jogadas — passando a vez.")
                 QTimer.singleShot(BOT_DELAY_MS, lambda: self._apply_action(PASS_ACTION))
         else:
+            self._board.set_drop_enabled(False)
             self._hand.set_hand(self._state.hands[self._human_seat],
                                 self._compute_human_legals())
             QTimer.singleShot(BOT_DELAY_MS, self._bot_step)
@@ -291,10 +300,14 @@ class GamePage(QWidget):
         human_hand = st.hands[self._human_seat]
         if st.is_empty_table:
             return set(human_hand)
+        left_end = st.left_end
+        right_end = st.right_end
+        if left_end is None or right_end is None:
+            return set(human_hand)
         legal = set()
         for pi in human_hand:
             p = DECK[pi]
-            if st.left_end is not None and (p.matches(st.left_end) or p.matches(st.right_end)):
+            if p.matches(left_end) or p.matches(right_end):
                 legal.add(pi)
         return legal
 
@@ -347,6 +360,24 @@ class GamePage(QWidget):
         self._btn_right.setVisible(False)
         self._apply_action(action)
 
+    def _on_board_piece_dropped(self, piece_idx: int, side: int) -> None:
+        if self._state is None or self._state.current_player != self._human_seat:
+            return
+        mask = legal_actions(self._state)
+        action = move_to_action(piece_idx, side)
+        if not mask[action]:
+            other_side = 1 - side
+            other_action = move_to_action(piece_idx, other_side)
+            if mask[other_action]:
+                lado_txt = "esquerda" if side == 0 else "direita"
+                self._status.setText(f"A peça não encaixa na {lado_txt}.")
+            return
+
+        self._pending_piece = None
+        self._btn_left.setVisible(False)
+        self._btn_right.setVisible(False)
+        self._apply_action(action)
+
     # ---- Apply action -----------------------------------------------------
 
     def _apply_action(self, action: int) -> None:
@@ -366,6 +397,8 @@ class GamePage(QWidget):
                 side,
                 next_state.left_end if next_state.left_end is not None else -1,
                 next_state.right_end if next_state.right_end is not None else -1,
+                prev_left_end=prev_state.left_end,
+                prev_right_end=prev_state.right_end,
             )
         if done:
             self._refresh_opponents()

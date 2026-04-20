@@ -1,9 +1,9 @@
 """QWidget that paints a single domino piece (orientations: horizontal/vertical)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtCore import QMimeData, QPoint, QPointF, QRectF, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QDrag, QPainter, QPen
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from domino.core.piece import DECK, Piece
 
@@ -33,14 +33,18 @@ class PieceWidget(QWidget):
         piece_idx: int,
         horizontal: bool = True,
         face_down: bool = False,
+        flipped: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.piece_idx = piece_idx
         self.horizontal = horizontal
         self.face_down = face_down
+        self.flipped = flipped
         self._highlighted = False
         self._disabled = False
+        self._draggable = False
+        self._press_pos: QPoint | None = None
         self.setFixedSize(self._ideal_size())
 
     def _ideal_size(self) -> QSize:
@@ -62,9 +66,46 @@ class PieceWidget(QWidget):
         self._disabled = disabled
         self.update()
 
+    def set_draggable(self, draggable: bool) -> None:
+        self._draggable = draggable
+
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and not self._disabled:
+            self._press_pos = event.pos()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if (
+            self._draggable
+            and not self._disabled
+            and self._press_pos is not None
+            and (event.pos() - self._press_pos).manhattanLength()
+            >= QApplication.startDragDistance()
+        ):
+            self._start_drag(event.pos())
+            self._press_pos = None
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._press_pos is not None:
             self.clicked.emit(self.piece_idx)
+            self._press_pos = None
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _start_drag(self, hot_spot: QPoint) -> None:
+        drag = QDrag(self)
+        mime = QMimeData()
+        mime.setText(f"domino-piece:{self.piece_idx}")
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.setHotSpot(hot_spot)
+        drag.exec(Qt.DropAction.MoveAction)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -105,8 +146,13 @@ class PieceWidget(QWidget):
 
         piece: Piece = DECK[self.piece_idx]
         # convention: low pip half appears first (left for horizontal, top for vertical)
-        self._draw_half(painter, half_a, piece.low)
-        self._draw_half(painter, half_b, piece.high)
+        # if flipped, swap the display order
+        if self.flipped:
+            self._draw_half(painter, half_a, piece.high)
+            self._draw_half(painter, half_b, piece.low)
+        else:
+            self._draw_half(painter, half_a, piece.low)
+            self._draw_half(painter, half_b, piece.high)
         painter.end()
 
     @staticmethod
