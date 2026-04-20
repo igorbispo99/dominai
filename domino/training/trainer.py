@@ -24,7 +24,7 @@ from domino.core.piece import DECK
 from domino.models import build_model
 from domino.training.checkpoint import save_checkpoint
 from domino.training.replay_buffer import ReplayBuffer, Transition
-from domino.agents import HeuristicAgent, RandomAgent
+from domino.agents import HeuristicAgent, RandomAgent, VarietyAgent
 
 
 # ---------------------------------------------------------------- reward shaping
@@ -40,6 +40,7 @@ _TERMINAL_LOSS     = -1.0
 _OPP_SELF     = "self"
 _OPP_RANDOM   = "random"
 _OPP_HEURISTIC = "heuristic"
+_OPP_VARIETY  = "variety"
 _OPP_POOL     = "pool"
 
 
@@ -85,6 +86,7 @@ class TrainerConfig:
     # Values should sum ≤ 1.0; the remainder goes to self-play.
     opp_prob_random: float = 0.2
     opp_prob_heuristic: float = 0.2
+    opp_prob_variety: float = 0.0
     opp_prob_pool: float = 0.0
     # logging / checkpointing
     eval_every: int = 1_000
@@ -124,6 +126,7 @@ class TrainerConfig:
             pool_max_size=pool.get("max_size", 8),
             opp_prob_random=training.get("opp_prob_random", 0.2),
             opp_prob_heuristic=training.get("opp_prob_heuristic", 0.2),
+            opp_prob_variety=training.get("opp_prob_variety", 0.0),
             opp_prob_pool=training.get("opp_prob_pool", 0.0),
             eval_every=training.get("eval_every", 1_000),
             eval_games=training.get("eval_games", 100),
@@ -158,6 +161,7 @@ class Trainer:
         # stateless helper agents (re-seeded per episode implicitly via their own rng)
         self._random_agent = RandomAgent(seed=None)
         self._heuristic_agent = HeuristicAgent(seed=None)
+        self._variety_agent = VarietyAgent(seed=None)
 
         # per-episode opponent selection: one of _OPP_*
         self._episode_opponent: str = _OPP_SELF
@@ -196,6 +200,8 @@ class Trainer:
             return self._random_agent.select_action(state, mask)
         if kind == _OPP_HEURISTIC:
             return self._heuristic_agent.select_action(state, mask)
+        if kind == _OPP_VARIETY:
+            return self._variety_agent.select_action(state, mask)
         if kind == _OPP_POOL:
             return self._select_pool(obs, mask)
         # self-play fallback: sampled elsewhere
@@ -214,6 +220,9 @@ class Trainer:
         cum += self.cfg.opp_prob_heuristic
         if r < cum:
             return _OPP_HEURISTIC
+        cum += self.cfg.opp_prob_variety
+        if r < cum:
+            return _OPP_VARIETY
         return _OPP_SELF
 
     # ---------------------------------------------------------------- pool

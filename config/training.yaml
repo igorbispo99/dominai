@@ -27,7 +27,8 @@ training:
   # probability mass goes to self-play with the online model.
   opp_prob_random: 0.2
   opp_prob_heuristic: 0.2
-  opp_prob_pool: 0.0
+  opp_prob_variety: 0.1
+  opp_prob_pool: 0.1
 
   epsilon:
     start: 1.0

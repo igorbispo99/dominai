@@ -1,74 +1,167 @@
-# Domino AI
+# DominAI
 
-Double-six domino engine with:
+Double-six domino project with a PyQt6 graphical interface, support for 2-4 players, and reinforcement learning training via DQN self-play.
 
-- **PyQt6 GUI** for human vs. 1-3 bots
-- **DQN agent** (a neural network used as the Q-function) trained through **self-play**
-- **Pluggable ML model** (MLP or ResNet — new models can be added via `@register_model`)
-- Support for **2-4 players**, **block** and **draw** modes configured via YAML
+## What the project does
+
+- Lets a human play against 1 to 3 bots through the GUI.
+- Trains a DQN agent via self-play using YAML configuration.
+- Supports interchangeable model architectures through the `domino.models.registry` registry.
+- Supports both `block` and `draw` modes.
+- Includes auxiliary bots for training diversity: random, heuristic, and variety-based.
+
+## Requirements
+
+- Python 3.10+
+- Main dependencies: `torch`, `numpy`, `PyYAML`, `PyQt6`
 
 ## Installation
 
 ```bash
 python -m pip install -e .
-# or, to run tests:
+```
+
+To install development dependencies:
+
+```bash
 python -m pip install -e ".[dev]"
 ```
 
-Main dependencies: `torch`, `numpy`, `PyQt6`, `PyYAML`.
+## Running the GUI
 
-## Self-Play Training
+```bash
+python -m domino.cli.play
+```
+
+To load a trained checkpoint:
+
+```bash
+python -m domino.cli.play --checkpoint checkpoints/run03/latest.pt
+```
+
+If `--checkpoint` is omitted, the bots use a random policy. The GUI start screen lets you configure:
+
+- number of players
+- match mode (`block` or `draw`)
+- human seat
+- team mode (`even vs odd seats`)
+- optional checkpoint
+
+## Training
+
+Default training run via YAML:
 
 ```bash
 python -m domino.cli.train --config config/training.yaml
-# resume from a checkpoint:
-python -m domino.cli.train --config config/training.yaml --resume checkpoints/run01/latest.pt
 ```
 
-Every `eval_every` episodes, the seat 0 agent is evaluated against random opponents; the win rate is printed to stdout.
-
-## Play Against the AI
+Resume from an existing checkpoint:
 
 ```bash
-python -m domino.cli.play --checkpoint checkpoints/run01/latest.pt
+python -m domino.cli.train --config config/training.yaml --resume checkpoints/run03/latest.pt
 ```
 
-If `--checkpoint` is omitted, the bots play randomly, which is useful for testing the GUI.
+The `config/training.yaml` file controls three main sections:
 
-## State Encoding
+- `game`: number of players, game mode, and `team_mode`
+- `model`: Q-function approximator architecture and hyperparameters
+- `training`: episodes, buffer, epsilon, checkpoints, evaluation, and opponent mix
 
-62-dimensional vector:
+The current example configuration uses:
 
-| Block | Dim | Description |
-|---|---|---|
+- `num_players: 3`
+- `mode: draw`
+- `model.name: mlp`
+- `checkpoint_dir: ./checkpoints/run03`
+- `device: cuda`
+
+If CUDA is not available on the machine, change it to `device: cpu`.
+
+### Opponent mix during training
+
+During training, opponent seats can use different policies according to the probabilities defined in the YAML:
+
+- `opp_prob_random`
+- `opp_prob_heuristic`
+- `opp_prob_variety`
+- `opp_prob_pool`
+
+The remaining probability mass falls back to self-play with the online model.
+
+### Checkpoints and evaluation
+
+- checkpoints are saved according to `checkpoint_every`
+- evaluation runs according to `eval_every`
+- progress is printed to stdout by the training CLI
+
+## State encoding and action space
+
+The state uses a 62-dimensional vector:
+
+| Block | Dimension | Description |
+|---|---:|---|
 | Player hand | 28 | binary flag per tile |
 | Table - played tiles | 28 | binary flag per tile |
-| Table - open ends | 2 | normalized value from 0-6 (`-1` if empty) |
-| Opponent counts | 4 | normalized by 7 |
+| Open ends | 2 | normalized values from 0 to 6, or `-1` when the table is empty |
+| Opponent counts | 4 | counts normalized by 7 |
 
-Action space: 57 (28 tiles x 2 ends + `PASS`). Illegal actions are masked both during selection (epsilon-greedy) and during DQN target computation.
+The action space has 57 positions:
 
-## Adding a New Model
+- `28 x 2` possible piece/side plays
+- `PASS_ACTION` to pass the turn
+
+Illegal actions are masked both during action selection and during DQN target computation.
+
+## Available models
+
+The project registers models by name and instantiates them from the YAML `model` section.
+
+Currently available models:
+
+- `mlp`
+- `resnet`
+
+Custom model example:
 
 ```python
-from domino.models.registry import register_model
 from domino.models.base import Model
+from domino.models.registry import register_model
+
 
 @register_model("my_net")
 class MyNet(Model):
-    def __init__(self, state_dim, action_dim, **kwargs):
+    def __init__(self, state_dim, action_dim, width=256):
         super().__init__(state_dim, action_dim)
-        # ...
+        ...
 
     def forward(self, x):
         ...
 
     @classmethod
     def from_config(cls, cfg, state_dim, action_dim):
-        return cls(state_dim, action_dim, **cfg.get("kwargs", {}))
+        return cls(
+            state_dim=state_dim,
+            action_dim=action_dim,
+            width=cfg.get("width", 256),
+        )
 ```
 
-Then use `name: my_net` in the YAML `model:` block.
+After that, use `name: my_net` in the YAML.
+
+## Project structure
+
+```text
+domino/
+  agents/     # DQN, random, heuristic, and variety agents
+  cli/        # entry points for training and GUI
+  core/       # rules, state, pieces, and encoding
+  gui/        # main window and PyQt6 widgets
+  models/     # base interface, registry, MLP, and residual MLP
+  training/   # trainer, replay buffer, and checkpoints
+config/       # example YAML configurations
+checkpoints/  # saved training weights
+tests/        # pytest suite
+```
 
 ## Tests
 
@@ -76,16 +169,14 @@ Then use `name: my_net` in the YAML `model:` block.
 python -m pytest
 ```
 
-## Structure
+For a quick targeted run, the smoke and rules tests are a good starting point:
 
-```text
-domino/
-  core/       # tiles, rules, state, encoding
-  models/     # Model interface + MLP/ResNet + registry
-  agents/     # Agent, RandomAgent, DQNAgent
-  training/   # ReplayBuffer, Trainer, checkpoint
-  gui/        # PyQt6 - window, board, hand, tiles
-  cli/        # train / play
-config/       # example YAML files
-tests/        # pytest
+```bash
+python -m pytest tests/test_trainer_smoke.py tests/test_rules.py
 ```
+
+## Notes
+
+- The play CLI only accepts `--checkpoint`; the other match options are configured on the GUI start screen.
+- Team mode exists in the code and in the GUI, but it makes the most sense in 4-player matches.
+- The files in `config/` are intended as starting points and can be adjusted for experiments.
